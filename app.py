@@ -1,18 +1,18 @@
-from flask import Flask, flash, request, jsonify, url_for, redirect, render_template
-from werkzeug.utils import secure_filename
-from flask_pymongo import PyMongo
-import numpy as np
-from bson.json_util import dumps
-from bson.objectid import ObjectId
-import json
-import cv2
-import os
-from ocr import ocr_it
-import math
 from datetime import datetime
-
-os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+import math
+from ocr import ocr_it
+import os
+import cv2
+import json
+from bson.objectid import ObjectId
+from bson.json_util import dumps
+import numpy as np
+from flask_pymongo import PyMongo
+from werkzeug.utils import secure_filename
+from flask import Flask, flash, request, jsonify, url_for, redirect, render_template
 import tensorflow as tf
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+
 
 # CONSTANTS
 ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg"}
@@ -43,17 +43,21 @@ else:
     print("Failed to load model.")
 
 # TF OBJECT DETECTION
+
+
 def box_detection(image_path, infer_model):
     img = cv2.imread(image_path)
     img_np = np.array(img)
-    input_tensor = tf.convert_to_tensor(np.expand_dims(img_np, 0), dtype=tf.uint8)
+    input_tensor = tf.convert_to_tensor(
+        np.expand_dims(img_np, 0), dtype=tf.uint8)
     detections = infer_model(input_tensor)
     num_detections = int(detections.pop("num_detections"))
     detections = {
         key: value[0, :num_detections].numpy() for key, value in detections.items()
     }
     detections["num_detections"] = num_detections
-    detections["detection_classes"] = detections["detection_classes"].astype(np.int64)
+    detections["detection_classes"] = detections["detection_classes"].astype(
+        np.int64)
     image_np_with_detections = img_np.copy()
     image = image_np_with_detections
     return detections, image
@@ -62,7 +66,8 @@ def box_detection(image_path, infer_model):
 # NUMEBR PLATE OCR
 def number_plate(image_path):
     detections, image = box_detection(image_path, infer)
-    final_text = ocr_it(image, detections, DETECTION_THRESHOLD, REGION_THRESHOLD)
+    final_text = ocr_it(image, detections,
+                        DETECTION_THRESHOLD, REGION_THRESHOLD)
     if final_text:
         if len(final_text) != 0:
             return final_text[0]
@@ -93,56 +98,86 @@ def home():
         if file and allowed_file(file.filename):
             filename = secure_filename(file.filename)
             filename = "upload." + filename.split(".")[1]
+            # saves image with ROI
             file.save(os.path.join(app.config["UPLOAD_FOLDER"], filename))
-            text = number_plate(os.path.join(app.config["UPLOAD_FOLDER"], filename))
+            # saves number plate text
+            text = number_plate(os.path.join(
+                app.config["UPLOAD_FOLDER"], filename))
+            # query for user with that number plate
             user = db.users.find_one({"plate": text.replace(" ", "")})
-            booking = (
-                db.bookings.find({"user": ObjectId(user["_id"])})
-                .sort([("createdAt", -1)])
-                .limit(1)
-            )
-            for doc in booking:
-                booking_object = doc
-            booking_id = booking_object["_id"]
-            if booking_object["status"] == "REACH ON TIME":
-                db.bookings.update_one(
-                    {"_id": ObjectId(booking_id)},
-                    {
-                        "$set": {
-                            "status": "ENTRY SCAN SUCCESS",
-                            "startTime": datetime.now(),
-                        }
-                    },
+            # if no user in found
+            if user is None:
+                flash('No user found with number plate: '+text)
+                return render_template("index.html", filename="detect.png")
+            # if a user is found
+            else:
+                # query for the latest booking by the user
+                booking = (
+                    db.bookings.find({"user": ObjectId(user["_id"])})
+                    .sort([("createdAt", -1)])
+                    .limit(1)
                 )
-            elif booking_object["status"] == "ENTRY SCAN SUCCESS":
-                db.bookings.update_one(
-                    {"_id": ObjectId(booking_id)},
-                    {
-                        "$set": {
-                            "status": "EXIT SCAN SUCCESS",
-                            "endTime": datetime.now(),
-                        }
-                    },
-                )
-                price = db.areas.find_one({"name": booking_object["bookedArea"]})[
-                    "price"
-                ]
-                db.areas.update_one(
-                    {
-                        "name": booking_object["bookedArea"],
-                        "slots.name": booking_object["bookedSlot"],
-                    },
-                    {"$set": {"slots.$.filled": False}},
-                )
-                price_amout = calculatePrice(
-                    start=booking_object["startTime"], end=datetime.now(), price=price,
-                )
-                print(price_amout)
-                db.bookings.update_one(
-                    {"_id": ObjectId(booking_id)}, {"$set": {"price": price_amout}}
-                )
-            if text:
+                booking_object = booking[0]
+                # booking_id for that booking
+                booking_id = booking_object["_id"]
+                # booking create time
+                created_at = booking_object["createdAt"]
+                # checks if the booking date is today
+                if datetime.today().date() == created_at.date():
+                    # checks the status for entry scan
+                    if booking_object["status"] == "REACH ON TIME":
+                        # updates the booking status and entry time
+                        db.bookings.update_one(
+                            {"_id": ObjectId(booking_id)},
+                            {
+                                "$set": {
+                                    "status": "ENTRY SCAN SUCCESS",
+                                    "startTime": datetime.now(),
+                                }
+                            },
+                        )
+                    # checks the status for exit scan
+                    elif booking_object["status"] == "ENTRY SCAN SUCCESS":
+                        # updates the booking status and exit time
+                        db.bookings.update_one(
+                            {"_id": ObjectId(booking_id)},
+                            {
+                                "$set": {
+                                    "status": "EXIT SCAN SUCCESS",
+                                    "endTime": datetime.now(),
+                                }
+                            },
+                        )
+                        # query for price for the area slot
+                        price = db.areas.find_one({"name": booking_object["bookedArea"]})[
+                            "price"
+                        ]
+                        # updates the booked slot to empty
+                        db.areas.update_one(
+                            {
+                                "name": booking_object["bookedArea"],
+                                "slots.name": booking_object["bookedSlot"],
+                            },
+                            {"$set": {"slots.$.filled": False}},
+                        )
+                        # calculates the amount for the booking
+                        price_amout = calculatePrice(
+                            start=booking_object["startTime"], end=datetime.now(), price=price,
+                        )
+                        # updates the booking with the price
+                        db.bookings.update_one(
+                            {"_id": ObjectId(booking_id)}, {
+                                "$set": {"price": price_amout}}
+                        )
+                    else:
+                        flash('Invalid Booking Status with number plate: '+text)
+                        return render_template("index.html", filename="detect.png")
+                else:
+                    flash('No active booking found with number plate: '+text)
+                    return render_template("index.html", filename="detect.png")
+            if text or booking_object:
                 flash("Detected Number Plate: " + text)
+                flash("Booking status: "+booking_object['status'])
                 return render_template("index.html", filename="detect.png")
             else:
                 flash("Unable to detect number plate!")
