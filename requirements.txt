@@ -7,8 +7,10 @@ clang==5.0
 click==8.0.1
 colorama==0.4.4
 cycler==0.10.0
+dnspython==2.1.0
 easyocr==1.4.1
 Flask==2.0.1
+Flask-PyMongo==2.3.0
 flatbuffers==1.12
 gast==0.4.0
 google-auth==1.35.0
@@ -36,9 +38,11 @@ Pillow==8.2.0
 protobuf==3.17.3
 pyasn1==0.4.8
 pyasn1-modules==0.2.8
+pymongo==3.12.1
 pyparsing==2.4.7
 python-bidi==0.4.2
 python-dateutil==2.8.2
+python-dotenv==0.19.1
 PyWavelets==1.1.1
 PyYAML==5.4.1
 requests==2.26.0
