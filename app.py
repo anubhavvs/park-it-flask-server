@@ -5,11 +5,10 @@ import os
 import cv2
 import json
 from bson.objectid import ObjectId
-from bson.json_util import dumps
 import numpy as np
 from flask_pymongo import PyMongo
 from werkzeug.utils import secure_filename
-from flask import Flask, flash, request, jsonify, url_for, redirect, render_template
+from flask import Flask, flash, request, url_for, redirect, render_template
 import tensorflow as tf
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
@@ -123,7 +122,16 @@ def home():
                 # booking create time
                 created_at = booking_object["createdAt"]
                 # checks if the booking date is today
-                if datetime.today().date() == created_at.date():
+                if datetime.utcnow().date() == created_at.date():
+                    # sets the status to wait for scan
+                    db.bookings.update_one(
+                        {"_id": ObjectId(booking_id)},
+                        {
+                            "$set": {
+                                "status": "WAIT FOR SCAN"
+                            }
+                        },
+                    )
                     # checks the status for entry scan
                     if booking_object["status"] == "REACH ON TIME":
                         # updates the booking status and entry time
