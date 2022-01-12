@@ -140,7 +140,7 @@ def home():
                             {
                                 "$set": {
                                     "status": "ENTRY SCAN SUCCESS",
-                                    "startTime": datetime.now(),
+                                    "startTime": datetime.utcnow(),
                                 }
                             },
                         )
