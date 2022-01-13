@@ -10,6 +10,7 @@ from flask_pymongo import PyMongo
 from werkzeug.utils import secure_filename
 from flask import Flask, flash, request, url_for, redirect, render_template
 import tensorflow as tf
+from threading import Event
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
 
@@ -132,6 +133,7 @@ def home():
                             }
                         },
                     )
+                    Event().wait(5)
                     # checks the status for entry scan
                     if booking_object["status"] == "REACH ON TIME":
                         # updates the booking status and entry time
@@ -152,7 +154,7 @@ def home():
                             {
                                 "$set": {
                                     "status": "EXIT SCAN SUCCESS",
-                                    "endTime": datetime.now(),
+                                    "endTime": datetime.utcnow(),
                                 }
                             },
                         )
@@ -170,7 +172,7 @@ def home():
                         )
                         # calculates the amount for the booking
                         price_amout = calculatePrice(
-                            start=booking_object["startTime"], end=datetime.now(), price=price,
+                            start=booking_object["startTime"], end=datetime.utcnow(), price=price,
                         )
                         # updates the booking with the price
                         db.bookings.update_one(
